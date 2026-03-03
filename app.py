@@ -2,6 +2,7 @@ import requests
 import time
 import os
 from flask import Flask
+from datetime import datetime
 
 app = Flask(__name__)
 
@@ -29,6 +30,11 @@ def send_line_message(text):
     }
     requests.post(url, headers=headers, json=data)
 
+def is_quiet_time():
+    hour = datetime.now().hour
+    # 21:00〜6:59 は通知しない
+    return hour >= 21 or hour < 7
+
 def check_earthquake():
     global last_event_id
     try:
@@ -50,8 +56,13 @@ def check_earthquake():
                     if pref["name"] == "鹿児島県":
                         max_int = int(pref["maxInt"].replace("震度", "").replace("+", "").replace("-", ""))
                         if max_int >= 3:
-                            text = f"【地震情報】\n鹿児島県で震度{max_int}を観測しました。\n発生時刻：{detail['body']['earthquake']['time']}"
-                            send_line_message(text)
+                            if not is_quiet_time():
+                                text = (
+                                    f"【地震情報】\n"
+                                    f"鹿児島県で震度{max_int}を観測しました。\n"
+                                    f"発生時刻：{detail['body']['earthquake']['time']}"
+                                )
+                                send_line_message(text)
 
                 last_event_id = event_id
                 return
