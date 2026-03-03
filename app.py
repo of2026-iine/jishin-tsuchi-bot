@@ -63,6 +63,14 @@ def home():
     return "Bot is running"
 
 if __name__ == "__main__":
-    while True:
-        check_earthquake()
-        time.sleep(60)
+    import threading
+
+    def run_loop():
+        while True:
+            check_earthquake()
+            time.sleep(60)
+
+    thread = threading.Thread(target=run_loop)
+    thread.start()
+
+    app.run(host="0.0.0.0", port=10000)
