@@ -74,11 +74,7 @@ def home():
         data = request.json
         print("Webhook受信:", data, flush=True)
 
-        try:
-            group_id = data["events"][0]["source"]["groupId"]
-            print("取得したgroupId:", group_id, flush=True)
-        except Exception as e:
-            print("groupId取得失敗:", e, flush=True)
+        send_line_message("✅ Bot接続テスト成功")
 
         return "OK", 200
     return "Bot is running"
