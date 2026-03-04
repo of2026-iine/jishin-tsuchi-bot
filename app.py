@@ -72,13 +72,13 @@ def check_earthquake():
 def home():
     if request.method == "POST":
         data = request.json
-        print("Webhook受信:", data)
+        print("Webhook受信:", data, flush=True)
 
         try:
             group_id = data["events"][0]["source"]["groupId"]
-            print("取得したgroupId:", group_id)
-        except:
-            print("groupId取得失敗")
+            print("取得したgroupId:", group_id, flush=True)
+        except Exception as e:
+            print("groupId取得失敗:", e, flush=True)
 
         return "OK", 200
     return "Bot is running"
