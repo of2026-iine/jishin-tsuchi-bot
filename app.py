@@ -57,10 +57,11 @@ def check_earthquake():
                         if max_int >= 3:
                             if not is_quiet_time():
                                 text = (
-                                    f"【地震情報】\n"
-                                    f"鹿児島県で震度{max_int}を観測しました。\n"
-                                    f"発生時刻：{detail['body']['earthquake']['time']}"
-                                )
+    f"【地震情報】\n"
+    f"鹿児島県で震度{max_int}を観測しました。\n"
+    f"発生時刻：{detail['body']['earthquake']['time']}\n"
+    f"大丈夫ですか？"
+)
                                 send_line_message(text)
 
                 last_event_id = event_id
