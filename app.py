@@ -73,9 +73,6 @@ def home():
     if request.method == "POST":
         data = request.json
         print("Webhook受信:", data, flush=True)
-
-        send_line_message("✅ Bot接続テスト成功")
-
         return "OK", 200
     return "Bot is running"
 
