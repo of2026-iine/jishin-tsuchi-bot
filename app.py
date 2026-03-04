@@ -71,7 +71,15 @@ def check_earthquake():
 @app.route("/", methods=["GET", "POST"])
 def home():
     if request.method == "POST":
-        print(request.json)
+        data = request.json
+        print("Webhook受信:", data)
+
+        try:
+            group_id = data["events"][0]["source"]["groupId"]
+            print("取得したgroupId:", group_id)
+        except:
+            print("groupId取得失敗")
+
         return "OK", 200
     return "Bot is running"
 
