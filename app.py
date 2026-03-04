@@ -1,7 +1,7 @@
 import requests
 import time
 import os
-from flask import Flask
+from flask import Flask, request
 from datetime import datetime
 
 app = Flask(__name__)
@@ -32,7 +32,6 @@ def send_line_message(text):
 
 def is_quiet_time():
     hour = datetime.now().hour
-    # 21:00〜6:59 は通知しない
     return hour >= 21 or hour < 7
 
 def check_earthquake():
@@ -69,8 +68,11 @@ def check_earthquake():
     except:
         pass
 
-@app.route("/")
+@app.route("/", methods=["GET", "POST"])
 def home():
+    if request.method == "POST":
+        print(request.json)
+        return "OK", 200
     return "Bot is running"
 
 if __name__ == "__main__":
