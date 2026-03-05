@@ -100,43 +100,59 @@ def check_earthquake():
         res = requests.get(JMA_URL, timeout=10)
         data = res.json()
 
+        if not isinstance(data, list):
+            return
+
         for item in data:
-            if item["ttl"] == "震度速報":
-                event_id = item["eid"]
+            if item.get("ttl") != "震度速報":
+                continue
 
-                if event_id == last_event_id:
-                    return
-
-                detail_url = f"https://www.jma.go.jp/bosai/quake/data/{item['json']}"
-                detail = requests.get(detail_url, timeout=10).json()
-
-                areas = detail["body"]["intensity"]["observation"]["pref"]
-
-                for pref in areas:
-                    if pref["name"] == "鹿児島県":
-                        max_int = int(
-                            pref["maxInt"]
-                            .replace("震度", "")
-                            .replace("+", "")
-                            .replace("-", "")
-                        )
-
-                        if max_int >= 3 and not is_quiet_time():
-                            text = (
-                                f"【地震情報】\n"
-                                f"鹿児島県で震度{max_int}を観測しました。\n"
-                                f"発生時刻：{detail['body']['earthquake']['time']}\n"
-                                f"大丈夫ですか？"
-                            )
-
-                            send_line_message(text)
-
-                last_event_id = event_id
+            event_id = item.get("eid")
+            if not event_id or event_id == last_event_id:
                 return
+
+            detail_url = f"https://www.jma.go.jp/bosai/quake/data/{item.get('json')}"
+            detail_res = requests.get(detail_url, timeout=10)
+            detail = detail_res.json()
+
+            # 🔒 安全チェック
+            body = detail.get("body")
+            if not body:
+                return
+
+            intensity = body.get("intensity", {})
+            observation = intensity.get("observation", {})
+            prefs = observation.get("pref", [])
+
+            for pref in prefs:
+                if pref.get("name") != "鹿児島県":
+                    continue
+
+                max_int_raw = pref.get("maxInt")
+                if not max_int_raw:
+                    continue
+
+                max_int = int(
+                    max_int_raw.replace("震度", "").replace("+", "").replace("-", "")
+                )
+
+                if max_int >= 3 and not is_quiet_time():
+                    earthquake_time = body.get("earthquake", {}).get("time", "不明")
+
+                    text = (
+                        f"【地震情報】\n"
+                        f"鹿児島県で震度{max_int}を観測しました。\n"
+                        f"発生時刻：{earthquake_time}\n"
+                        f"大丈夫ですか？"
+                    )
+
+                    send_line_message(text)
+
+            last_event_id = event_id
+            return
 
     except Exception as e:
         print("地震チェックエラー:", e, flush=True)
-
 
 # =========================
 # Webhook受信
