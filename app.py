@@ -66,8 +66,8 @@ def check_earthquake():
 
                 last_event_id = event_id
                 return
-    except:
-        pass
+    except Exception as e:
+        print("地震チェックエラー:", e, flush=True)
 
 @app.route("/", methods=["GET", "POST"])
 def home():
