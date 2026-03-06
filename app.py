@@ -14,33 +14,59 @@ LINE_CHANNEL_ACCESS_TOKEN = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN")
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 
+if not SUPABASE_URL or not SUPABASE_KEY:
+    raise ValueError("Supabase環境変数が設定されていません")
+
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 JMA_URL = "https://www.jma.go.jp/bosai/quake/data/list.json"
+
 last_event_id = None
 
 
 # =========================
-# グループ管理（Supabase）
+# グループ保存（Supabase）
 # =========================
 def save_group(group_id):
-    existing = supabase.table("groups").select("*").eq("group_id", group_id).execute()
+
+    existing = (
+        supabase
+        .table("groups")
+        .select("*")
+        .eq("group_id", group_id)
+        .execute()
+    )
 
     if not existing.data:
-        supabase.table("groups").insert({"group_id": group_id}).execute()
+        supabase.table("groups").insert({
+            "group_id": group_id
+        }).execute()
+
         print("グループ登録:", group_id, flush=True)
 
 
+# =========================
+# グループ読み込み
+# =========================
 def load_groups():
+
     response = supabase.table("groups").select("*").execute()
-    return [g["group_id"] for g in response.data]
+
+    groups = []
+
+    for g in response.data:
+        groups.append(g["group_id"])
+
+    return groups
 
 
 # =========================
-# LINE送信
+# LINE送信（全グループ）
 # =========================
 def send_line_message(text):
+
     url = "https://api.line.me/v2/bot/message/push"
+
     headers = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {LINE_CHANNEL_ACCESS_TOKEN}"
@@ -48,7 +74,10 @@ def send_line_message(text):
 
     groups = load_groups()
 
+    print("送信対象グループ:", groups, flush=True)
+
     for group_id in groups:
+
         data = {
             "to": group_id,
             "messages": [
@@ -59,11 +88,19 @@ def send_line_message(text):
             ]
         }
 
-        requests.post(url, headers=headers, json=data)
+        res = requests.post(url, headers=headers, json=data)
+
+        if res.status_code != 200:
+            print("LINE送信失敗:", res.status_code, res.text, flush=True)
 
 
+# =========================
+# LINE送信（単体グループ）
+# =========================
 def send_line_message_to_group(group_id, text):
+
     url = "https://api.line.me/v2/bot/message/push"
+
     headers = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {LINE_CHANNEL_ACCESS_TOKEN}"
@@ -79,14 +116,19 @@ def send_line_message_to_group(group_id, text):
         ]
     }
 
-    requests.post(url, headers=headers, json=data)
+    res = requests.post(url, headers=headers, json=data)
+
+    if res.status_code != 200:
+        print("LINE送信失敗:", res.status_code, res.text, flush=True)
 
 
 # =========================
-# 時間制御
+# 夜間通知OFF
 # =========================
 def is_quiet_time():
+
     hour = datetime.now().hour
+
     return hour >= 21 or hour < 7
 
 
@@ -94,29 +136,39 @@ def is_quiet_time():
 # 地震チェック
 # =========================
 def check_earthquake():
+
     global last_event_id
 
     try:
+
         res = requests.get(JMA_URL, timeout=10)
+
         data = res.json()
 
         if not isinstance(data, list):
             return
 
         for item in data:
+
             if item.get("ttl") != "震度速報":
                 continue
 
             event_id = item.get("eid")
-            if not event_id or event_id == last_event_id:
+
+            if not event_id:
+                continue
+
+            if event_id == last_event_id:
                 return
 
             detail_url = f"https://www.jma.go.jp/bosai/quake/data/{item.get('json')}"
+
             detail_res = requests.get(detail_url, timeout=10)
+
             detail = detail_res.json()
 
-            # 🔒 安全チェック
             body = detail.get("body")
+
             if not body:
                 return
 
@@ -125,18 +177,24 @@ def check_earthquake():
             prefs = observation.get("pref", [])
 
             for pref in prefs:
+
                 if pref.get("name") != "鹿児島県":
                     continue
 
                 max_int_raw = pref.get("maxInt")
+
                 if not max_int_raw:
                     continue
 
                 max_int = int(
-                    max_int_raw.replace("震度", "").replace("+", "").replace("-", "")
+                    max_int_raw
+                    .replace("震度", "")
+                    .replace("+", "")
+                    .replace("-", "")
                 )
 
                 if max_int >= 3 and not is_quiet_time():
+
                     earthquake_time = body.get("earthquake", {}).get("time", "不明")
 
                     text = (
@@ -149,25 +207,34 @@ def check_earthquake():
                     send_line_message(text)
 
             last_event_id = event_id
+
             return
 
     except Exception as e:
+
         print("地震チェックエラー:", e, flush=True)
 
+
 # =========================
-# Webhook受信
+# Webhook
 # =========================
 @app.route("/", methods=["GET", "POST"])
 def home():
+
     if request.method == "POST":
+
         data = request.json
+
         print("Webhook受信:", data, flush=True)
 
         events = data.get("events", [])
 
         for event in events:
+
             if event["type"] == "join":
+
                 group_id = event["source"]["groupId"]
+
                 save_group(group_id)
 
                 send_line_message_to_group(
@@ -181,17 +248,22 @@ def home():
 
 
 # =========================
-# 起動処理
+# 起動
 # =========================
 if __name__ == "__main__":
+
     import threading
 
     def run_loop():
+
         while True:
+
             check_earthquake()
+
             time.sleep(60)
 
     thread = threading.Thread(target=run_loop)
+
     thread.start()
 
     app.run(host="0.0.0.0", port=10000)
