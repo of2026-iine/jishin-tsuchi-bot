@@ -20,12 +20,11 @@ if not SUPABASE_URL or not SUPABASE_KEY:
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 JMA_URL = "https://www.jma.go.jp/bosai/quake/data/list.json"
-
 last_event_id = None
 
 
 # =========================
-# グループ保存（Supabase）
+# グループ保存
 # =========================
 def save_group(group_id):
 
@@ -123,7 +122,7 @@ def send_line_message_to_group(group_id, text):
 
 
 # =========================
-# 夜間通知OFF
+# 夜間通知停止
 # =========================
 def is_quiet_time():
 
@@ -142,7 +141,6 @@ def check_earthquake():
     try:
 
         res = requests.get(JMA_URL, timeout=10)
-
         data = res.json()
 
         if not isinstance(data, list):
@@ -164,7 +162,6 @@ def check_earthquake():
             detail_url = f"https://www.jma.go.jp/bosai/quake/data/{item.get('json')}"
 
             detail_res = requests.get(detail_url, timeout=10)
-
             detail = detail_res.json()
 
             body = detail.get("body")
@@ -207,7 +204,6 @@ def check_earthquake():
                     send_line_message(text)
 
             last_event_id = event_id
-
             return
 
     except Exception as e:
@@ -239,7 +235,7 @@ def home():
 
                 send_line_message_to_group(
                     group_id,
-                    "このグループを地震通知の配信先に登録しました。"
+                    "このグループを地震通知の配信先に登録しました。\n\nこのBOTは21時〜7時の間は通知を停止します。"
                 )
 
         return "OK", 200
