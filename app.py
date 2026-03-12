@@ -14,12 +14,17 @@ LINE_CHANNEL_ACCESS_TOKEN = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN")
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 
+# 環境変数チェック
+if not LINE_CHANNEL_ACCESS_TOKEN:
+    raise ValueError("LINE_CHANNEL_ACCESS_TOKENが設定されていません")
+
 if not SUPABASE_URL or not SUPABASE_KEY:
     raise ValueError("Supabase環境変数が設定されていません")
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 JMA_URL = "https://www.jma.go.jp/bosai/quake/data/list.json"
+
 last_event_id = None
 
 
@@ -207,7 +212,6 @@ def check_earthquake():
             return
 
     except Exception as e:
-
         print("地震チェックエラー:", e, flush=True)
 
 
@@ -235,7 +239,7 @@ def home():
 
                 send_line_message_to_group(
                     group_id,
-                    "このグループを地震通知の配信先に登録しました。\n\nこのBOTは21時〜7時の間は通知を停止します。"
+                    "✅このグループを地震通知の配信先に登録しました。\n\nこのBOTは鹿児島県で震度3以上の地震を検知した場合に通知します。\n※21時〜7時の間は通知を停止します。"
                 )
 
         return "OK", 200
@@ -259,7 +263,6 @@ if __name__ == "__main__":
             time.sleep(60)
 
     thread = threading.Thread(target=run_loop)
-
     thread.start()
 
     app.run(host="0.0.0.0", port=10000)
