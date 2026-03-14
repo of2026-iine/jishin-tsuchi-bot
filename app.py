@@ -13,10 +13,7 @@ app = Flask(__name__)
 LINE_CHANNEL_ACCESS_TOKEN = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN")
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
-
-# 環境変数チェック
-if not LINE_CHANNEL_ACCESS_TOKEN:
-    raise ValueError("LINE_CHANNEL_ACCESS_TOKENが設定されていません")
+ADMIN_USER_ID = os.environ.get("ADMIN_USER_ID")
 
 if not SUPABASE_URL or not SUPABASE_KEY:
     raise ValueError("Supabase環境変数が設定されていません")
@@ -24,7 +21,6 @@ if not SUPABASE_URL or not SUPABASE_KEY:
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 JMA_URL = "https://www.jma.go.jp/bosai/quake/data/list.json"
-
 last_event_id = None
 
 
@@ -42,6 +38,7 @@ def save_group(group_id):
     )
 
     if not existing.data:
+
         supabase.table("groups").insert({
             "group_id": group_id
         }).execute()
@@ -54,14 +51,21 @@ def save_group(group_id):
 # =========================
 def load_groups():
 
-    response = supabase.table("groups").select("*").execute()
+    try:
 
-    groups = []
+        response = supabase.table("groups").select("*").execute()
 
-    for g in response.data:
-        groups.append(g["group_id"])
+        groups = []
 
-    return groups
+        for g in response.data:
+            groups.append(g["group_id"])
+
+        return groups
+
+    except Exception as e:
+
+        print("グループ読み込み失敗:", e, flush=True)
+        return []
 
 
 # =========================
@@ -78,28 +82,34 @@ def send_line_message(text):
 
     groups = load_groups()
 
-    print("送信対象グループ:", groups, flush=True)
+    print("送信対象:", groups, flush=True)
 
     for group_id in groups:
 
-        data = {
-            "to": group_id,
-            "messages": [
-                {
-                    "type": "text",
-                    "text": text
-                }
-            ]
-        }
+        try:
 
-        res = requests.post(url, headers=headers, json=data)
+            data = {
+                "to": group_id,
+                "messages": [
+                    {
+                        "type": "text",
+                        "text": text
+                    }
+                ]
+            }
 
-        if res.status_code != 200:
-            print("LINE送信失敗:", res.status_code, res.text, flush=True)
+            res = requests.post(url, headers=headers, json=data, timeout=10)
+
+            if res.status_code != 200:
+                print("LINE送信失敗:", res.text, flush=True)
+
+        except Exception as e:
+
+            print("LINE送信エラー:", e, flush=True)
 
 
 # =========================
-# LINE送信（単体グループ）
+# 単体送信
 # =========================
 def send_line_message_to_group(group_id, text):
 
@@ -120,14 +130,17 @@ def send_line_message_to_group(group_id, text):
         ]
     }
 
-    res = requests.post(url, headers=headers, json=data)
+    try:
 
-    if res.status_code != 200:
-        print("LINE送信失敗:", res.status_code, res.text, flush=True)
+        requests.post(url, headers=headers, json=data, timeout=10)
+
+    except Exception as e:
+
+        print("単体送信エラー:", e, flush=True)
 
 
 # =========================
-# 夜間通知停止
+# 夜間停止
 # =========================
 def is_quiet_time():
 
@@ -212,6 +225,7 @@ def check_earthquake():
             return
 
     except Exception as e:
+
         print("地震チェックエラー:", e, flush=True)
 
 
@@ -231,6 +245,7 @@ def home():
 
         for event in events:
 
+            # グループ参加
             if event["type"] == "join":
 
                 group_id = event["source"]["groupId"]
@@ -239,12 +254,26 @@ def home():
 
                 send_line_message_to_group(
                     group_id,
-                    "✅このグループを地震通知の配信先に登録しました。\n\nこのBOTは鹿児島県で震度3以上の地震を検知した場合に通知します。\n※21時〜7時の間は通知を停止します。"
+                    "✅このグループを地震通知の配信先に登録しました。\n\n"
+                    "このBOTは鹿児島県で震度3以上の地震を検知した場合に通知します。\n"
+                    "※21時〜7時の間は通知を停止します。"
                 )
 
         return "OK", 200
 
     return "Bot is running"
+
+
+# =========================
+# 地震ループ
+# =========================
+def earthquake_loop():
+
+    while True:
+
+        check_earthquake()
+
+        time.sleep(60)
 
 
 # =========================
@@ -254,15 +283,8 @@ if __name__ == "__main__":
 
     import threading
 
-    def run_loop():
-
-        while True:
-
-            check_earthquake()
-
-            time.sleep(60)
-
-    thread = threading.Thread(target=run_loop)
+    thread = threading.Thread(target=earthquake_loop)
+    thread.daemon = True
     thread.start()
 
     app.run(host="0.0.0.0", port=10000)
