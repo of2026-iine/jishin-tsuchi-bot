@@ -18,9 +18,9 @@ JMA_URL = "https://www.jma.go.jp/bosai/quake/data/list.json"
 last_event_id = None
 
 
-# =================
-# グループ保存
-# =================
+# =========================
+# グループ登録
+# =========================
 
 def save_group(group_id, admin_id):
 
@@ -32,41 +32,50 @@ def save_group(group_id, admin_id):
         .execute()
     )
 
-    if not existing.data:
+    if existing.data:
+        return False
 
-        supabase.table("groups").insert({
-            "group_id": group_id,
-            "admin_id": admin_id
-        }).execute()
+    supabase.table("groups").insert({
+        "group_id": group_id,
+        "admin_id": admin_id
+    }).execute()
 
-        print("グループ登録:", group_id)
+    print("グループ登録:", group_id, flush=True)
+
+    return True
 
 
-# =================
+# =========================
 # グループ削除
-# =================
+# =========================
 
 def remove_group(group_id):
 
     supabase.table("groups").delete().eq("group_id", group_id).execute()
 
-    print("グループ削除:", group_id)
+    print("グループ削除:", group_id, flush=True)
 
 
-# =================
+# =========================
 # グループ取得
-# =================
+# =========================
 
 def load_groups():
 
-    response = supabase.table("groups").select("*").execute()
+    try:
 
-    return [g["group_id"] for g in response.data]
+        response = supabase.table("groups").select("*").execute()
+
+        return [g["group_id"] for g in response.data]
+
+    except:
+
+        return []
 
 
-# =================
+# =========================
 # LINE送信
-# =================
+# =========================
 
 def send_line_message(text):
 
@@ -116,9 +125,9 @@ def send_line_message_to_group(group_id, text):
     requests.post(url, headers=headers, json=data)
 
 
-# =================
-# 夜間停止
-# =================
+# =========================
+# 夜間通知停止
+# =========================
 
 def is_quiet_time():
 
@@ -127,9 +136,9 @@ def is_quiet_time():
     return hour >= 21 or hour < 7
 
 
-# =================
+# =========================
 # 地震チェック
-# =================
+# =========================
 
 def check_earthquake():
 
@@ -201,9 +210,9 @@ def check_earthquake():
         print("地震チェックエラー:", e)
 
 
-# =================
+# =========================
 # webhook
-# =================
+# =========================
 
 @app.route("/", methods=["POST","GET"])
 def home():
@@ -232,12 +241,21 @@ def home():
                 # 管理者登録
                 if message == "/BOT admin":
 
-                    save_group(group_id, user_id)
+                    created = save_group(group_id, user_id)
 
-                    send_line_message_to_group(
-                        group_id,
-                        "✅このグループを管理者として登録しました"
-                    )
+                    if created:
+
+                        send_line_message_to_group(
+                            group_id,
+                            "✅このグループの管理者として登録しました"
+                        )
+
+                    else:
+
+                        send_line_message_to_group(
+                            group_id,
+                            "⚠このグループには既に管理者が設定されています"
+                        )
 
                 # テスト通知
                 if message == "/BOT test":
@@ -252,6 +270,7 @@ def home():
 
                     send_line_message_to_group(group_id, text)
 
+            # BOT削除
             if event["type"] == "leave":
 
                 remove_group(group_id)
@@ -261,9 +280,9 @@ def home():
     return "BOT RUNNING"
 
 
-# =================
-# 地震ループ
-# =================
+# =========================
+# 地震監視
+# =========================
 
 def earthquake_loop():
 
