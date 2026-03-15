@@ -13,14 +13,11 @@ app = Flask(__name__)
 LINE_CHANNEL_ACCESS_TOKEN = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN")
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
-ADMIN_USER_ID = os.environ.get("ADMIN_USER_ID")
-
-if not SUPABASE_URL or not SUPABASE_KEY:
-    raise ValueError("Supabase環境変数が設定されていません")
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 JMA_URL = "https://www.jma.go.jp/bosai/quake/data/list.json"
+
 last_event_id = None
 
 
@@ -47,7 +44,7 @@ def save_group(group_id):
 
 
 # =========================
-# グループ読み込み
+# グループ取得
 # =========================
 def load_groups():
 
@@ -64,12 +61,12 @@ def load_groups():
 
     except Exception as e:
 
-        print("グループ読み込み失敗:", e, flush=True)
+        print("グループ取得失敗:", e, flush=True)
         return []
 
 
 # =========================
-# LINE送信（全グループ）
+# LINE送信
 # =========================
 def send_line_message(text):
 
@@ -98,10 +95,7 @@ def send_line_message(text):
                 ]
             }
 
-            res = requests.post(url, headers=headers, json=data, timeout=10)
-
-            if res.status_code != 200:
-                print("LINE送信失敗:", res.text, flush=True)
+            requests.post(url, headers=headers, json=data, timeout=10)
 
         except Exception as e:
 
@@ -132,11 +126,11 @@ def send_line_message_to_group(group_id, text):
 
     try:
 
-        requests.post(url, headers=headers, json=data, timeout=10)
+        requests.post(url, headers=headers, json=data)
 
     except Exception as e:
 
-        print("単体送信エラー:", e, flush=True)
+        print("送信エラー:", e, flush=True)
 
 
 # =========================
@@ -170,9 +164,6 @@ def check_earthquake():
                 continue
 
             event_id = item.get("eid")
-
-            if not event_id:
-                continue
 
             if event_id == last_event_id:
                 return
@@ -215,8 +206,7 @@ def check_earthquake():
                     text = (
                         f"【地震情報】\n"
                         f"鹿児島県で震度{max_int}を観測しました。\n"
-                        f"発生時刻：{earthquake_time}\n"
-                        f"大丈夫ですか？"
+                        f"発生時刻：{earthquake_time}"
                     )
 
                     send_line_message(text)
@@ -245,7 +235,6 @@ def home():
 
         for event in events:
 
-            # グループ参加
             if event["type"] == "join":
 
                 group_id = event["source"]["groupId"]
@@ -265,7 +254,7 @@ def home():
 
 
 # =========================
-# 地震ループ
+# 地震監視ループ
 # =========================
 def earthquake_loop():
 
@@ -287,4 +276,6 @@ if __name__ == "__main__":
     thread.daemon = True
     thread.start()
 
-    app.run(host="0.0.0.0", port=10000)
+    port = int(os.environ.get("PORT", 10000))
+
+    app.run(host="0.0.0.0", port=port)
