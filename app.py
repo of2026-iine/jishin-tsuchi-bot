@@ -10,9 +10,11 @@ app = Flask(__name__)
 # =========================
 # 環境変数
 # =========================
+
 LINE_CHANNEL_ACCESS_TOKEN = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN")
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
+ADMIN_USER_ID = os.environ.get("ADMIN_USER_ID")
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
@@ -22,8 +24,33 @@ last_event_id = None
 
 
 # =========================
+# 管理者チェック
+# =========================
+
+def is_admin_in_group(group_id):
+
+    url = f"https://api.line.me/v2/bot/group/{group_id}/members/ids"
+
+    headers = {
+        "Authorization": f"Bearer {LINE_CHANNEL_ACCESS_TOKEN}"
+    }
+
+    res = requests.get(url, headers=headers)
+
+    if res.status_code != 200:
+        print("メンバー取得失敗:", res.text)
+        return False
+
+    data = res.json()
+    members = data.get("memberIds", [])
+
+    return ADMIN_USER_ID in members
+
+
+# =========================
 # グループ保存
 # =========================
+
 def save_group(group_id):
 
     existing = (
@@ -44,8 +71,20 @@ def save_group(group_id):
 
 
 # =========================
+# グループ削除
+# =========================
+
+def remove_group(group_id):
+
+    supabase.table("groups").delete().eq("group_id", group_id).execute()
+
+    print("グループ削除:", group_id, flush=True)
+
+
+# =========================
 # グループ取得
 # =========================
+
 def load_groups():
 
     try:
@@ -68,6 +107,7 @@ def load_groups():
 # =========================
 # LINE送信
 # =========================
+
 def send_line_message(text):
 
     url = "https://api.line.me/v2/bot/message/push"
@@ -78,8 +118,6 @@ def send_line_message(text):
     }
 
     groups = load_groups()
-
-    print("送信対象:", groups, flush=True)
 
     for group_id in groups:
 
@@ -95,16 +133,13 @@ def send_line_message(text):
                 ]
             }
 
-            requests.post(url, headers=headers, json=data, timeout=10)
+            requests.post(url, headers=headers, json=data)
 
         except Exception as e:
 
             print("LINE送信エラー:", e, flush=True)
 
 
-# =========================
-# 単体送信
-# =========================
 def send_line_message_to_group(group_id, text):
 
     url = "https://api.line.me/v2/bot/message/push"
@@ -125,17 +160,15 @@ def send_line_message_to_group(group_id, text):
     }
 
     try:
-
         requests.post(url, headers=headers, json=data)
-
-    except Exception as e:
-
-        print("送信エラー:", e, flush=True)
+    except:
+        pass
 
 
 # =========================
-# 夜間停止
+# 夜間通知停止
 # =========================
+
 def is_quiet_time():
 
     hour = datetime.now().hour
@@ -146,13 +179,14 @@ def is_quiet_time():
 # =========================
 # 地震チェック
 # =========================
+
 def check_earthquake():
 
     global last_event_id
 
     try:
 
-        res = requests.get(JMA_URL, timeout=10)
+        res = requests.get(JMA_URL)
         data = res.json()
 
         if not isinstance(data, list):
@@ -169,14 +203,20 @@ def check_earthquake():
                 return
 
             detail_url = f"https://www.jma.go.jp/bosai/quake/data/{item.get('json')}"
-
-            detail_res = requests.get(detail_url, timeout=10)
-            detail = detail_res.json()
+            detail = requests.get(detail_url).json()
 
             body = detail.get("body")
 
             if not body:
                 return
+
+            earthquake = body.get("earthquake", {})
+
+            earthquake_time = earthquake.get("time", "不明")
+            hypocenter = earthquake.get("hypocenter", {})
+
+            place = hypocenter.get("name", "不明")
+            magnitude = hypocenter.get("magnitude", "不明")
 
             intensity = body.get("intensity", {})
             observation = intensity.get("observation", {})
@@ -201,12 +241,12 @@ def check_earthquake():
 
                 if max_int >= 3 and not is_quiet_time():
 
-                    earthquake_time = body.get("earthquake", {}).get("time", "不明")
-
                     text = (
-                        f"【地震情報】\n"
-                        f"鹿児島県で震度{max_int}を観測しました。\n"
-                        f"発生時刻：{earthquake_time}"
+                        "【地震情報】\n"
+                        f"鹿児島県で震度{max_int}を観測\n"
+                        f"発生時刻：{earthquake_time}\n\n"
+                        f"震源地：{place}\n"
+                        f"マグニチュード：M{magnitude}"
                     )
 
                     send_line_message(text)
@@ -216,37 +256,78 @@ def check_earthquake():
 
     except Exception as e:
 
-        print("地震チェックエラー:", e, flush=True)
+        print("地震チェックエラー:", e)
 
 
 # =========================
 # Webhook
 # =========================
+
 @app.route("/", methods=["GET", "POST"])
 def home():
 
     if request.method == "POST":
 
         data = request.json
-
-        print("Webhook受信:", data, flush=True)
-
         events = data.get("events", [])
 
         for event in events:
 
+            source = event.get("source", {})
+            source_type = source.get("type")
+
+            # 個人チャットは無視
+            if source_type == "user":
+                continue
+
+            # BOT test コマンド
+            if event["type"] == "message":
+
+                message = event["message"].get("text","")
+
+                if message == "/BOT test":
+
+                    group_id = source.get("groupId")
+
+                    text = (
+                        "【地震通知テスト】\n"
+                        "鹿児島県で震度4を観測\n"
+                        "発生時刻：テスト\n\n"
+                        "震源地：鹿児島湾\n"
+                        "マグニチュード：M5.0"
+                    )
+
+                    send_line_message_to_group(group_id, text)
+
+            # グループ参加
             if event["type"] == "join":
 
-                group_id = event["source"]["groupId"]
+                group_id = source["groupId"]
+
+                if not is_admin_in_group(group_id):
+
+                    send_line_message_to_group(
+                        group_id,
+                        "⚠このBOTは管理者がいるグループでのみ使用できます。"
+                    )
+
+                    return "OK", 200
 
                 save_group(group_id)
 
                 send_line_message_to_group(
                     group_id,
                     "✅このグループを地震通知の配信先に登録しました。\n\n"
-                    "このBOTは鹿児島県で震度3以上の地震を検知した場合に通知します。\n"
-                    "※21時〜7時の間は通知を停止します。"
+                    "鹿児島県で震度3以上の地震を検知した場合に通知します。\n"
+                    "※21時〜7時は通知停止"
                 )
+
+            # BOTがグループから削除された
+            if event["type"] == "leave":
+
+                group_id = source.get("groupId")
+
+                remove_group(group_id)
 
         return "OK", 200
 
@@ -256,6 +337,7 @@ def home():
 # =========================
 # 地震監視ループ
 # =========================
+
 def earthquake_loop():
 
     while True:
@@ -268,6 +350,7 @@ def earthquake_loop():
 # =========================
 # 起動
 # =========================
+
 if __name__ == "__main__":
 
     import threading
