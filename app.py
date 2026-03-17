@@ -14,6 +14,7 @@ SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
+# あなたのID
 ADMIN_USER_ID = "U7655be872bdb66a953e83bff821e4be5"
 
 JMA_URL = "https://www.jma.go.jp/bosai/quake/data/list.json"
@@ -21,9 +22,9 @@ JMA_URL = "https://www.jma.go.jp/bosai/quake/data/list.json"
 last_event_id = None
 
 
-# ------------------------
+# =================
 # グループ保存
-# ------------------------
+# =================
 
 def save_group(group_id):
 
@@ -49,44 +50,37 @@ def save_group(group_id):
     except Exception as e:
 
         print("登録エラー", e)
-
         return False
 
 
-# ------------------------
+# =================
 # グループ削除
-# ------------------------
+# =================
 
 def remove_group(group_id):
 
     try:
-
         supabase.table("groups").delete().eq("group_id", group_id).execute()
-
     except:
         pass
 
 
-# ------------------------
+# =================
 # グループ一覧
-# ------------------------
+# =================
 
 def load_groups():
 
     try:
-
         res = supabase.table("groups").select("*").execute()
-
         return [g["group_id"] for g in res.data]
-
     except:
-
         return []
 
 
-# ------------------------
+# =================
 # LINE送信
-# ------------------------
+# =================
 
 def send_line(group_id, text):
 
@@ -99,7 +93,7 @@ def send_line(group_id, text):
 
     data = {
         "to": group_id,
-        "messages":[{"type":"text","text":text}]
+        "messages": [{"type": "text", "text": text}]
     }
 
     requests.post(url, headers=headers, json=data)
@@ -110,13 +104,12 @@ def send_all(text):
     groups = load_groups()
 
     for g in groups:
-
         send_line(g, text)
 
 
-# ------------------------
+# =================
 # 管理者がいるか確認
-# ------------------------
+# =================
 
 def check_admin_in_group(group_id):
 
@@ -131,20 +124,19 @@ def check_admin_in_group(group_id):
     return r.status_code == 200
 
 
-# ------------------------
+# =================
 # 夜間通知停止
-# ------------------------
+# =================
 
 def is_quiet_time():
 
     hour = datetime.now().hour
-
     return hour >= 21 or hour < 7
 
 
-# ------------------------
+# =================
 # 地震チェック
-# ------------------------
+# =================
 
 def check_earthquake():
 
@@ -153,7 +145,6 @@ def check_earthquake():
     try:
 
         res = requests.get(JMA_URL)
-
         data = res.json()
 
         for item in data:
@@ -167,26 +158,20 @@ def check_earthquake():
                 return
 
             detail_url = f"https://www.jma.go.jp/bosai/quake/data/{item.get('json')}"
-
             detail = requests.get(detail_url).json()
 
-            body = detail.get("body")
+            body = detail.get("body", {})
+            eq = body.get("earthquake", {})
 
-            eq = body.get("earthquake",{})
+            time_text = eq.get("time", "不明")
 
-            time_text = eq.get("time","不明")
+            hypo = eq.get("hypocenter", {})
+            place = hypo.get("name", "不明")
+            magnitude = hypo.get("magnitude", "不明")
 
-            hypo = eq.get("hypocenter",{})
-
-            place = hypo.get("name","不明")
-
-            magnitude = hypo.get("magnitude","不明")
-
-            intensity = body.get("intensity",{})
-
-            obs = intensity.get("observation",{})
-
-            prefs = obs.get("pref",[])
+            intensity = body.get("intensity", {})
+            obs = intensity.get("observation", {})
+            prefs = obs.get("pref", [])
 
             for pref in prefs:
 
@@ -195,7 +180,9 @@ def check_earthquake():
 
                 raw = pref.get("maxInt")
 
-                level = int(raw.replace("震度","").replace("+","").replace("-",""))
+                level = int(
+                    raw.replace("震度", "").replace("+", "").replace("-", "")
+                )
 
                 if level >= 3 and not is_quiet_time():
 
@@ -210,37 +197,34 @@ def check_earthquake():
                     send_all(text)
 
             last_event_id = event_id
-
             return
 
     except Exception as e:
-
         print("地震エラー", e)
 
 
-# ------------------------
+# =================
 # webhook
-# ------------------------
+# =================
 
-@app.route("/", methods=["POST","GET"])
+@app.route("/", methods=["POST", "GET"])
 def home():
 
     if request.method == "POST":
 
         data = request.json
-
-        events = data.get("events",[])
+        events = data.get("events", [])
 
         for event in events:
 
-            source = event.get("source",{})
+            source = event.get("source", {})
 
             if source.get("type") != "group":
                 continue
 
             group_id = source.get("groupId")
 
-            # BOT追加
+            # BOT追加時
             if event["type"] == "join":
 
                 if check_admin_in_group(group_id):
@@ -250,7 +234,9 @@ def home():
                     send_line(
                         group_id,
                         "✅管理者を確認しました。\n"
-                        "このグループを地震通知対象に登録しました。"
+                        "このグループを地震通知対象に登録しました。\n\n"
+                        "鹿児島県で震度3以上の地震を検知した場合に通知します。\n"
+                        "※21時〜7時の間は通知を停止します。"
                     )
 
                 else:
@@ -260,13 +246,14 @@ def home():
                         "⚠このBOTは管理者がいるグループでのみ使用できます。"
                     )
 
+            # BOT退出
             if event["type"] == "leave":
-
                 remove_group(group_id)
 
+            # テスト
             if event["type"] == "message":
 
-                text = event["message"].get("text","")
+                text = event["message"].get("text", "")
 
                 if text == "/BOT test":
 
@@ -284,16 +271,14 @@ def home():
     return "RUNNING"
 
 
-# ------------------------
-# 地震監視
-# ------------------------
+# =================
+# 地震監視ループ
+# =================
 
 def earthquake_loop():
 
     while True:
-
         check_earthquake()
-
         time.sleep(60)
 
 
@@ -302,11 +287,8 @@ if __name__ == "__main__":
     import threading
 
     t = threading.Thread(target=earthquake_loop)
-
     t.daemon = True
-
     t.start()
 
-    port = int(os.environ.get("PORT",10000))
-
+    port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
