@@ -137,7 +137,7 @@ def check_admin_in_group(group_id):
 # =========================
 def is_quiet_time():
     hour = datetime.now().hour
-    return hour >= 21 or hour < 7
+    return hour >= 22 or hour < 6
 
 # =========================
 # 地震チェック（改良版）
@@ -248,7 +248,7 @@ def home():
                     "✅管理者を確認しました。\n"
                     "このグループを地震通知対象に登録しました。\n\n"
                     "鹿児島県で震度3以上の地震を検知した場合に通知します。\n"
-                    "※21時〜7時の間は通知を停止します。"
+                    "※22時〜6時の間は通知を停止します。"
                 )
 
             elif event["type"] == "leave":
